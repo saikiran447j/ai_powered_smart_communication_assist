@@ -1,0 +1,57 @@
+# --- Node / frontend ---
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# --- Python / backend ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+backend/.pytest_cache/
+backend/*.egg-info/
+
+# --- Env / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Build artifacts ---
+dist/
+build/
+# Local test files
+backend/tts_result.wav
+backend/tts_test.json
+
+# Local development certificates
+frontend/certs/
+
+# Piper archive (Piper executable/data remain tracked)
+backend/tools/piper/piper_windows_amd64.zip
+# Local WAV test files
+backend/*.wav
+
+# Ignore extracted local Piper runtimes (Windows development copies)
+backend/tools/piper/extracted/
+backend/tools/piper/**/piper*
+backend/tools/piper/**/onnxruntime*
+
+# Ignore local Piper archives and large model files (keep them out of Git)
+backend/tools/piper/*.zip
+backend/models/piper/**/*.onnx
+backend/models/piper/**/*.ort
+
+# Ignore local .env variants (already covered but be explicit)
+.env.local
+.env.*.local
