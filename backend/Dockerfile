@@ -56,10 +56,10 @@ RUN set -eux; \
     mkdir -p "$MODEL_DIR"; \
     echo "Downloading en_US-lessac-medium.onnx..."; \
     wget --tries=3 --timeout=30 -q -O "$MODEL_DIR/en_US-lessac-medium.onnx" \
-        "https://huggingface.co/rhasspy/piper-checkpoints/resolve/main/en_US-lessac-medium/en_US-lessac-medium.onnx"; \
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx"; \
     echo "Downloading en_US-lessac-medium.onnx.json..."; \
     wget --tries=3 --timeout=30 -q -O "$MODEL_DIR/en_US-lessac-medium.onnx.json" \
-        "https://huggingface.co/rhasspy/piper-checkpoints/resolve/main/en_US-lessac-medium/en_US-lessac-medium.onnx.json"; \
+        "https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json"; \
     test -s "$MODEL_DIR/en_US-lessac-medium.onnx"; \
     test -s "$MODEL_DIR/en_US-lessac-medium.onnx.json"; \
     python -c "import json; json.load(open('$MODEL_DIR/en_US-lessac-medium.onnx.json', encoding='utf-8'))"; \
