@@ -24,11 +24,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the backend source
 COPY . /app
 
-# Ensure model path exists. If the model folder is already present in the
-# repository it will be used. Otherwise attempt to download the common
-# en_US-lessac-medium model from the rhasspy/piper-checkpoints dataset on
-# Hugging Face. (Public dataset; adjust if you prefer a different model.)
-RUN mkdir -p /app/models/piper/en_US-lessac-medium || true
+# Ensure model path exists. We'll create the directory and download the
+# en_US-lessac-medium model if it is not already present in the repo.
+# The download step below is robust: wget is run with failure enabled and
+# the JSON metadata is validated using Python so the Docker build will
+# fail if files are missing or corrupted.
 
 # Download Piper Linux binary (x86_64) from rhasspy GitHub releases and
 # extract to /opt/piper. This is a reproducible, pinned release.
@@ -49,16 +49,20 @@ RUN set -eux; \
 
 # Attempt to download model files if they are not present in the repo.
 # These URLs point to the public rhasspy/piper-checkpoints dataset on Hugging Face.
+# Download and validate Piper model files
 RUN set -eux; \
     MODEL_DIR=/app/models/piper/en_US-lessac-medium; \
-    if [ -d "$MODEL_DIR" ] && [ -n "$(ls -A "$MODEL_DIR")" ]; then \
-        echo "Model already present in repo, skipping download"; \
-    else \
-        mkdir -p "$MODEL_DIR"; \
-        wget -q -O "$MODEL_DIR/en_US-lessac-medium.onnx" "https://huggingface.co/rhasspy/piper-checkpoints/resolve/main/en_US-lessac-medium/en_US-lessac-medium.onnx" || true; \
-        wget -q -O "$MODEL_DIR/en_US-lessac-medium.onnx.json" "https://huggingface.co/rhasspy/piper-checkpoints/resolve/main/en_US-lessac-medium/en_US-lessac-medium.onnx.json" || true; \
-        echo "Downloaded model artifacts (if available)."; \
-    fi
+    mkdir -p "$MODEL_DIR"; \
+    echo "Downloading en_US-lessac-medium.onnx..."; \
+    wget --tries=3 --timeout=30 -q -O "$MODEL_DIR/en_US-lessac-medium.onnx" \
+        "https://huggingface.co/rhasspy/piper-checkpoints/resolve/main/en_US-lessac-medium/en_US-lessac-medium.onnx"; \
+    echo "Downloading en_US-lessac-medium.onnx.json..."; \
+    wget --tries=3 --timeout=30 -q -O "$MODEL_DIR/en_US-lessac-medium.onnx.json" \
+        "https://huggingface.co/rhasspy/piper-checkpoints/resolve/main/en_US-lessac-medium/en_US-lessac-medium.onnx.json"; \
+    test -s "$MODEL_DIR/en_US-lessac-medium.onnx"; \
+    test -s "$MODEL_DIR/en_US-lessac-medium.onnx.json"; \
+    python -c "import json; json.load(open('$MODEL_DIR/en_US-lessac-medium.onnx.json', encoding='utf-8'))"; \
+    echo "Piper model and JSON metadata validated successfully"
 
 # Ensure Piper binary is executable and on PATH
 ENV PATH="/usr/local/bin:${PATH}"
