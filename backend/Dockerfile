@@ -50,6 +50,7 @@ RUN set -eux; \
 # Attempt to download model files if they are not present in the repo.
 # These URLs point to the public rhasspy/piper-checkpoints dataset on Hugging Face.
 # Download and validate Piper model files
+# Download and validate Piper model files
 RUN set -eux; \
     MODEL_DIR=/app/models/piper/en_US-lessac-medium; \
     mkdir -p "$MODEL_DIR"; \
