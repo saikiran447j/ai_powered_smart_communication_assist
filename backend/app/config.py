@@ -15,7 +15,8 @@ class Settings(BaseSettings):
     environment: str = "development"
     backend_host: str = "0.0.0.0"
     backend_port: int = 8000
-    cors_origins: str = "http://localhost:5173"
+    # Development default (Vite dev server) plus the production Vercel origin
+    cors_origins: str = "http://localhost:5173,https://ai-voicecall-communicating-assist.vercel.app"
 
     # A sensible default regex that matches localhost, 127.0.0.1, and
     # common private LAN ranges (10.x.x.x, 192.168.x.x, 172.16-31.x.x).
