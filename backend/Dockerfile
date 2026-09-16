@@ -32,12 +32,20 @@ RUN mkdir -p /app/models/piper/en_US-lessac-medium || true
 
 # Download Piper Linux binary (x86_64) from rhasspy GitHub releases and
 # extract to /opt/piper. This is a reproducible, pinned release.
+# Download Piper Linux binary (x86_64)
 RUN set -eux; \
     PIPER_URL=https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz; \
     mkdir -p /opt/piper; \
-    wget -q -O /tmp/piper.tar.gz "$PIPER_URL" && \
-    tar -xzf /tmp/piper.tar.gz -C /opt/piper --strip-components=0 || true && \
-    rm -f /tmp/piper.tar.gz || true
+    wget -q -O /tmp/piper.tar.gz "$PIPER_URL"; \
+    tar -xzf /tmp/piper.tar.gz -C /opt/piper; \
+    rm -f /tmp/piper.tar.gz; \
+    PIPER_BIN="$(find /opt/piper -type f -name piper | head -n 1)"; \
+    test -n "$PIPER_BIN"; \
+    chmod +x "$PIPER_BIN"; \
+    ln -sf "$PIPER_BIN" /usr/local/bin/piper; \
+    /usr/local/bin/piper --help >/dev/null
+
+# Attempt to download model files if they are not present in the repo.
 
 # Attempt to download model files if they are not present in the repo.
 # These URLs point to the public rhasspy/piper-checkpoints dataset on Hugging Face.
@@ -53,11 +61,8 @@ RUN set -eux; \
     fi
 
 # Ensure Piper binary is executable and on PATH
-RUN if [ -f /opt/piper/piper ]; then chmod +x /opt/piper/piper; fi
-ENV PATH="/opt/piper:${PATH}"
-
-# Default Piper env vars used by the application. Render will provide $PORT
-ENV PIPER_EXECUTABLE=/opt/piper/piper
+ENV PATH="/usr/local/bin:${PATH}"
+ENV PIPER_EXECUTABLE=piper
 ENV PIPER_MODEL_PATH=/app/models/piper/en_US-lessac-medium
 
 # Expose the port used by Render via the $PORT env var at runtime
