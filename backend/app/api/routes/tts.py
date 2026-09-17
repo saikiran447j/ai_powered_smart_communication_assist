@@ -8,6 +8,9 @@ WebRTC track — the same path used for typed, translated, gaze, and AI TTS.
 from __future__ import annotations
 
 from fastapi import APIRouter, Response, Request, HTTPException
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
+import os
 import logging
 
 from app.schemas.tts import TTSRequest
@@ -32,7 +35,7 @@ async def synthesize_speech(request: Request, payload: TTSRequest) -> Response:
     try:
         # Offload blocking Piper work to a thread and serialize via a
         # semaphore to avoid spawning concurrent heavy Piper processes.
-        audio_bytes, content_type = await generate_speech_wav_async(
+        wav_path, content_type = await generate_speech_wav_async(
             payload.text, voice=payload.voice
         )
     except PiperNotFoundError as exc:
@@ -45,4 +48,14 @@ async def synthesize_speech(request: Request, payload: TTSRequest) -> Response:
         logger.exception("TTS generation failed: %s", exc)
         raise HTTPException(status_code=502, detail="TTS generation failed")
 
-    return Response(content=audio_bytes, media_type=content_type)
+    # Stream the file without loading it fully into memory and delete the
+    # temporary file after the response has been sent.
+    def _cleanup(path: str) -> None:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+                logger.info("Temporary WAV cleaned up: %s", path)
+        except OSError:
+            logger.warning("Failed to remove temporary WAV: %s", path)
+
+    return FileResponse(path=wav_path, media_type=content_type, background=BackgroundTask(_cleanup, wav_path))

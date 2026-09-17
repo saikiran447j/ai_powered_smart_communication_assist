@@ -82,6 +82,9 @@ def generate_speech_wav(
     if not text or not text.strip():
         raise ProviderError("Empty text is not allowed for TTS.", provider="piper")
 
+    if max_chars and len(text) > max_chars:
+        raise ProviderError(f"Text exceeds maximum length of {max_chars} characters.", provider="piper")
+
     piper_exe_conf = settings.piper_executable
     model_path_conf = settings.piper_model_path
 
@@ -141,36 +144,57 @@ def generate_speech_wav(
         if not os.path.isfile(out_path):
             raise ProviderError("Piper completed but did not create a WAV file.", provider="piper")
 
+        # Validate WAV header by reading only the first 12 bytes to avoid
+        # loading the entire file into memory.
         wav_start = time.time()
-        with open(out_path, "rb") as audio_file:
-            audio_data = audio_file.read()
+        header_ok = False
+        try:
+            with open(out_path, "rb") as audio_file:
+                hdr = audio_file.read(12)
+                if len(hdr) >= 12 and hdr[0:4] == b"RIFF" and hdr[8:12] == b"WAVE":
+                    header_ok = True
+        except OSError:
+            header_ok = False
         wav_end = time.time()
         wav_ms = int((wav_end - wav_start) * 1000)
 
-        if not audio_data:
-            raise ProviderError("Piper produced an empty WAV file.", provider="piper")
-
-        # Basic WAV validation.
-        if audio_data[:4] != b"RIFF" or audio_data[8:12] != b"WAVE":
+        if not header_ok:
+            # Attempt to clean up the file before raising
+            try:
+                if os.path.exists(out_path):
+                    os.remove(out_path)
+            except OSError:
+                pass
             raise ProviderError("Piper output is not a valid WAV file.", provider="piper")
 
         total_ms = int((time.time() - piper_start) * 1000)
-        logger.info("TTS timings: piper=%dms wav=%dms total=%dms", piper_ms, wav_ms, total_ms)
+        logger.info("TTS timings: piper=%dms wav_read=%dms total=%dms", piper_ms, wav_ms, total_ms)
 
-        return audio_data, "audio/wav"
+        # Return the path to the WAV file instead of loading bytes into memory.
+        return out_path, "audio/wav"
 
     except subprocess.TimeoutExpired as exc:
-        raise ProviderError(f"Piper TTS timed out after {timeout_seconds} seconds.", provider="piper") from exc
-
-    except FileNotFoundError as exc:
-        raise PiperNotFoundError(f"Piper executable could not be started: {piper_resolved}", provider="piper") from exc
-
-    finally:
+        # Ensure temp file cleanup on timeout
         try:
             if os.path.exists(out_path):
                 os.remove(out_path)
         except OSError:
             pass
+        raise ProviderError(f"Piper TTS timed out after {timeout_seconds} seconds.", provider="piper") from exc
+
+    except FileNotFoundError as exc:
+        # Cleanup any temp file
+        try:
+            if os.path.exists(out_path):
+                os.remove(out_path)
+        except OSError:
+            pass
+        raise PiperNotFoundError(f"Piper executable could not be started: {piper_resolved}", provider="piper") from exc
+    finally:
+        # Note: do not remove out_path here on success because the caller
+        # (route) is responsible for streaming and deleting the file.
+        # On failure paths above we already attempted cleanup.
+        pass
 
 
 async def generate_speech_wav_async(
