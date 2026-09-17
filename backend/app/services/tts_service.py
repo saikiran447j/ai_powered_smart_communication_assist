@@ -188,8 +188,11 @@ async def generate_speech_wav_async(
     # Acquire semaphore to serialize Piper work
     await _piper_semaphore.acquire()
     wait_ms = int((time.time() - wait_start) * 1000)
-    logger.debug("TTS queue wait: %dms", wait_ms)
+    logger.info("TTS queue wait: %dms", wait_ms)
     try:
+        # Log a clear start marker (do not log user text)
+        logger.info("TTS started (queue_wait=%dms)", wait_ms)
+
         run_start = time.time()
         # Run the blocking generator in a separate thread to avoid blocking
         # the event loop. This reuses the synchronous implementation which
@@ -197,7 +200,11 @@ async def generate_speech_wav_async(
         result = await asyncio.to_thread(generate_speech_wav, text, voice, max_chars)
         run_ms = int((time.time() - run_start) * 1000)
         total_ms = int((time.time() - start_total) * 1000)
-        logger.info("TTS queue wait: %dms; Piper synthesis: %dms; Total TTS: %dms", wait_ms, run_ms, total_ms)
+        # Log synthesis and total timings at INFO so they appear in Render logs
+        logger.info("Piper synthesis: %dms", run_ms)
+        logger.info("Total TTS: %dms", total_ms)
+        # Clear finish marker
+        logger.info("TTS finished (total=%dms)", total_ms)
         return result
     finally:
         _piper_semaphore.release()
