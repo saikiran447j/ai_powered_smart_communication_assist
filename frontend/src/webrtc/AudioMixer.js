@@ -72,7 +72,9 @@ export class AudioMixer {
     try {
       // decodeAudioData detaches the buffer it's given, so pass a copy in
       // case the caller still holds a reference to the original.
+      console.debug("AudioMixer: decoding audio, bytes=", arrayBuffer?.byteLength || 0);
       const audioBuffer = await this.audioContext.decodeAudioData(arrayBuffer.slice(0));
+      console.debug("AudioMixer: decoded audio buffer length=", audioBuffer?.length || 0);
       const source = this.audioContext.createBufferSource();
       source.buffer = audioBuffer;
       source.connect(this.destination); // -> remote peer, via WebRTC
@@ -85,7 +87,10 @@ export class AudioMixer {
       source.start();
     } catch (err) {
       this._isPlayingTTS = false;
-      reject(err);
+      // Wrap decode errors so callers can distinguish failures.
+      const e = new Error(`Audio decode/playback failed: ${err?.message || String(err)}`);
+      e.code = "audio-decode";
+      reject(e);
       this._drainQueue();
     }
   }

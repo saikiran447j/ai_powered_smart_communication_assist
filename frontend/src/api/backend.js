@@ -32,13 +32,28 @@ export async function fetchHealth() {
  * the shared AudioMixer, never play it with browser speechSynthesis.
  */
 export async function synthesizeSpeech(text, { voice, language } = {}) {
-  const res = await fetch(`${BACKEND_URL}/api/tts`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, voice, language }),
-  });
+  let res;
+  try {
+    res = await fetch(`${BACKEND_URL}/api/tts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice, language }),
+    });
+  } catch (err) {
+    const e = new Error(`Network error while fetching TTS: ${err.message}`);
+    e.code = "network";
+    throw e;
+  }
+
   if (!res.ok) await throwForErrorResponse(res);
-  return res.arrayBuffer();
+
+  try {
+    return await res.arrayBuffer();
+  } catch (err) {
+    const e = new Error(`Failed to read TTS response body: ${err.message}`);
+    e.code = "body-read";
+    throw e;
+  }
 }
 
 export async function transcribeAudio(blob, { language, filename = "audio.webm" } = {}) {

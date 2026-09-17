@@ -58,8 +58,9 @@ export default function App() {
   // starts the /api/tts request in the background so clicking Speak is fast.
   const inCall = status === "in-call";
 
-  // Prefetch TTS whenever text becomes available while in a call. This
-  // starts the /api/tts request in the background so clicking Speak is fast.
+  // Debounced prefetch: wait until user stops typing for ~500ms before
+  // starting a background TTS request. This avoids many partial requests
+  // and prevents stale/cancelled fetches from surfacing as visible errors.
   useEffect(() => {
     const txt = message.trim();
     if (!txt || !inCall) {
@@ -72,24 +73,43 @@ export default function App() {
       return;
     }
 
-    if (ttsManager.isPending(txt)) {
-      setPreparing(true);
-      // don't start another request; just observe the existing one
-      const p = ttsManager.prefetch(txt).finally(() => {
-        if (message.trim() === txt) setPreparing(false);
-      });
-      return;
-    }
-
+    // Start a debounce timer; only when it fires do we call prefetch.
     setPreparing(true);
-    ttsManager
-      .prefetch(txt)
-      .then(() => {
-        if (message.trim() === txt) setPreparing(false);
-      })
-      .catch(() => {
-        if (message.trim() === txt) setPreparing(false);
-      });
+    const timer = setTimeout(() => {
+      // If audio is already cached or pending, reuse it.
+      if (ttsManager.hasAudio(txt)) {
+        setPreparing(false);
+        return;
+      }
+
+      if (ttsManager.isPending(txt)) {
+        // There's an in-flight request for this exact text -> observe it.
+        console.debug("App: observing existing in-flight prefetch for", txt);
+        ttsManager.prefetch(txt).finally(() => {
+          if (message.trim() === txt) setPreparing(false);
+        });
+        return;
+      }
+
+      // Start prefetching now.
+      console.debug("App: debounced prefetch firing for", txt);
+      ttsManager
+        .prefetch(txt)
+        .then(() => {
+          if (message.trim() === txt) setPreparing(false);
+        })
+        .catch((err) => {
+          // Ignore stale/cancelled prefetches; surface real errors only
+          // when the user explicitly clicks Speak.
+          console.debug("App: prefetch error (ignored) for", txt, err);
+          if (message.trim() === txt) setPreparing(false);
+        });
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+      // Do not abort any in-flight fetch; just cancel the debounce timer.
+    };
   }, [message, inCall]);
 
   return (
