@@ -4,10 +4,20 @@ import os
 import shutil
 import subprocess
 import tempfile
+import asyncio
+import time
 from typing import Tuple
 
 from app.config import settings
 from app.providers.exceptions import ProviderError
+
+import logging
+
+logger = logging.getLogger("app.services.tts")
+
+# Semaphore to limit concurrent Piper jobs (process-wide). Keep at 1 for
+# Render Free instance to avoid CPU overload.
+_piper_semaphore = asyncio.Semaphore(1)
 
 
 class PiperNotFoundError(ProviderError):
@@ -72,13 +82,6 @@ def generate_speech_wav(
     if not text or not text.strip():
         raise ProviderError("Empty text is not allowed for TTS.", provider="piper")
 
-    text = text.strip()
-
-    if len(text) > max_chars:
-        raise ProviderError(
-            f"Text exceeds maximum length of {max_chars} characters.", provider="piper"
-        )
-
     piper_exe_conf = settings.piper_executable
     model_path_conf = settings.piper_model_path
 
@@ -111,10 +114,10 @@ def generate_speech_wav(
         if voice_to_use:
             cmd.extend(["--voice", voice_to_use])
 
-        # Piper accepts plain text on stdin for many builds; provide text
-        # followed by newline.
         timeout_seconds = int(os.getenv("PIPER_TIMEOUT", "60"))
 
+        # Time the Piper subprocess separately from WAV processing
+        piper_start = time.time()
         result = subprocess.run(
             cmd,
             input=text + "\n",
@@ -123,6 +126,8 @@ def generate_speech_wav(
             timeout=timeout_seconds,
             check=False,
         )
+        piper_end = time.time()
+        piper_ms = int((piper_end - piper_start) * 1000)
 
         if result.returncode != 0:
             stderr = (result.stderr or "").strip()
@@ -136,8 +141,11 @@ def generate_speech_wav(
         if not os.path.isfile(out_path):
             raise ProviderError("Piper completed but did not create a WAV file.", provider="piper")
 
+        wav_start = time.time()
         with open(out_path, "rb") as audio_file:
             audio_data = audio_file.read()
+        wav_end = time.time()
+        wav_ms = int((wav_end - wav_start) * 1000)
 
         if not audio_data:
             raise ProviderError("Piper produced an empty WAV file.", provider="piper")
@@ -145,6 +153,9 @@ def generate_speech_wav(
         # Basic WAV validation.
         if audio_data[:4] != b"RIFF" or audio_data[8:12] != b"WAVE":
             raise ProviderError("Piper output is not a valid WAV file.", provider="piper")
+
+        total_ms = int((time.time() - piper_start) * 1000)
+        logger.info("TTS timings: piper=%dms wav=%dms total=%dms", piper_ms, wav_ms, total_ms)
 
         return audio_data, "audio/wav"
 
@@ -160,3 +171,33 @@ def generate_speech_wav(
                 os.remove(out_path)
         except OSError:
             pass
+
+
+async def generate_speech_wav_async(
+    text: str,
+    voice: str | None = None,
+    max_chars: int = 5000,
+) -> Tuple[bytes, str]:
+    """Async wrapper that serializes Piper jobs via a semaphore and runs
+    the blocking work in a threadpool so the FastAPI event loop isn't
+    blocked. Returns the same (audio_bytes, content_type) tuple as the
+    synchronous function.
+    """
+    start_total = time.time()
+    wait_start = time.time()
+    # Acquire semaphore to serialize Piper work
+    await _piper_semaphore.acquire()
+    wait_ms = int((time.time() - wait_start) * 1000)
+    logger.debug("TTS queue wait: %dms", wait_ms)
+    try:
+        run_start = time.time()
+        # Run the blocking generator in a separate thread to avoid blocking
+        # the event loop. This reuses the synchronous implementation which
+        # already handles timeouts and cleanup.
+        result = await asyncio.to_thread(generate_speech_wav, text, voice, max_chars)
+        run_ms = int((time.time() - run_start) * 1000)
+        total_ms = int((time.time() - start_total) * 1000)
+        logger.info("TTS queue wait: %dms; Piper synthesis: %dms; Total TTS: %dms", wait_ms, run_ms, total_ms)
+        return result
+    finally:
+        _piper_semaphore.release()

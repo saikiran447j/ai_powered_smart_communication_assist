@@ -11,7 +11,12 @@ from fastapi import APIRouter, Response, Request, HTTPException
 import logging
 
 from app.schemas.tts import TTSRequest
-from app.services.tts_service import generate_speech_wav, PiperNotFoundError, PiperModelMissingError
+from app.services.tts_service import (
+    generate_speech_wav,
+    generate_speech_wav_async,
+    PiperNotFoundError,
+    PiperModelMissingError,
+)
 
 router = APIRouter(tags=["tts"])
 
@@ -25,7 +30,11 @@ async def synthesize_speech(request: Request, payload: TTSRequest) -> Response:
     logger.info("TTS request from origin=%s path=%s", origin, request.url.path)
 
     try:
-        audio_bytes, content_type = generate_speech_wav(payload.text, voice=payload.voice)
+        # Offload blocking Piper work to a thread and serialize via a
+        # semaphore to avoid spawning concurrent heavy Piper processes.
+        audio_bytes, content_type = await generate_speech_wav_async(
+            payload.text, voice=payload.voice
+        )
     except PiperNotFoundError as exc:
         logger.error("Piper not found: %s", exc)
         raise HTTPException(status_code=500, detail=str(exc))
