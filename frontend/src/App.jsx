@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useCall } from "./webrtc/useCall";
-import { synthesizeSpeech } from "./api/backend";
+import ttsManager from "./tts/ttsCache";
 
 export default function App() {
   const {
@@ -23,6 +23,7 @@ export default function App() {
   const [message, setMessage] = useState("");
   const [speaking, setSpeaking] = useState(false);
   const [speakError, setSpeakError] = useState(null);
+  const [preparing, setPreparing] = useState(false);
 
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
@@ -45,7 +46,7 @@ export default function App() {
     setSpeakError(null);
     setSpeaking(true);
     try {
-      const audioBytes = await synthesizeSpeech(text);
+      const audioBytes = await ttsManager.getAudio(text);
       await speak(audioBytes);
     } catch (err) {
       setSpeakError(err.message);
@@ -53,8 +54,43 @@ export default function App() {
       setSpeaking(false);
     }
   }
-
+  // Prefetch TTS whenever text becomes available while in a call. This
+  // starts the /api/tts request in the background so clicking Speak is fast.
   const inCall = status === "in-call";
+
+  // Prefetch TTS whenever text becomes available while in a call. This
+  // starts the /api/tts request in the background so clicking Speak is fast.
+  useEffect(() => {
+    const txt = message.trim();
+    if (!txt || !inCall) {
+      setPreparing(false);
+      return;
+    }
+
+    if (ttsManager.hasAudio(txt)) {
+      setPreparing(false);
+      return;
+    }
+
+    if (ttsManager.isPending(txt)) {
+      setPreparing(true);
+      // don't start another request; just observe the existing one
+      const p = ttsManager.prefetch(txt).finally(() => {
+        if (message.trim() === txt) setPreparing(false);
+      });
+      return;
+    }
+
+    setPreparing(true);
+    ttsManager
+      .prefetch(txt)
+      .then(() => {
+        if (message.trim() === txt) setPreparing(false);
+      })
+      .catch(() => {
+        if (message.trim() === txt) setPreparing(false);
+      });
+  }, [message, inCall]);
 
   return (
     <main className="app">
@@ -126,6 +162,11 @@ export default function App() {
         <button disabled={speaking || !inCall || !message.trim()} onClick={handleSpeak}>
           {speaking ? "Speaking…" : "Speak"}
         </button>
+        {preparing && (
+          <p aria-live="polite" className="preparing">
+            Preparing voice...
+          </p>
+        )}
         {speakError && (
           <p role="alert" className="error">
             {speakError}
