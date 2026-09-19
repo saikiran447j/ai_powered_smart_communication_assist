@@ -25,9 +25,10 @@ class Settings(BaseSettings):
     cors_origin_regex: str = r"^https?://(localhost|127\\.0\\.0\\.1|10\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}|192\\.168\\.\\d{1,3}\\.\\d{1,3}|172\\.(1[6-9]|2[0-9]|3[0-1])\\.\\d{1,3}\\.\\d{1,3})(:\\d+)?$"
 
     # --- Provider selection ---
+
     stt_provider: str = "openai"
-    tts_provider: str = "piper"
-    translation_provider: str = "google"
+    tts_provider: str = "sarvam"
+    translation_provider: str = "sarvam"
     ai_provider: str = "openai"
 
     # --- OpenAI (STT, TTS, AI) ---
@@ -46,8 +47,16 @@ class Settings(BaseSettings):
     # Preferred voice/model id
     piper_voice: str = "en_US-lessac-medium"
 
+    # --- TTS provider selection ---
+    # Set to 'piper' (default) or 'sarvam' to use Sarvam Bulbul v3.
+   
+
     # --- Google Cloud Translation ---
     google_translate_api_key: str | None = None
+    # Base URL for translation provider (LibreTranslate-compatible).
+    translation_base_url: str | None = None
+    # Sarvam API key
+    sarvam_api_key: str | None = None
 
     # --- WebRTC ---
     stun_urls: str = "stun:stun.l.google.com:19302"
